@@ -215,7 +215,7 @@ build ContinuousSubmit: phony CMakeFiles/ContinuousSubmit
 #############################################
 # Order-only phony target for Vulkan
 
-build cmake_object_order_depends_target_Vulkan: phony || CMakeFiles/Vulkan.dir
+build cmake_object_order_depends_target_Vulkan: phony || Shaders
 
 build CMakeFiles/Vulkan.dir/main.cpp.o: CXX_COMPILER__Vulkan_unscanned_Debug /home/abrady/github/vulkan3/main.cpp || cmake_object_order_depends_target_Vulkan
   DEP_FILE = CMakeFiles/Vulkan.dir/main.cpp.o.d
@@ -239,7 +239,7 @@ build CMakeFiles/Vulkan.dir/Vulkan.cpp.o: CXX_COMPILER__Vulkan_unscanned_Debug /
 #############################################
 # Link the executable Vulkan
 
-build Vulkan: CXX_EXECUTABLE_LINKER__Vulkan_Debug CMakeFiles/Vulkan.dir/main.cpp.o CMakeFiles/Vulkan.dir/Vulkan.cpp.o
+build Vulkan: CXX_EXECUTABLE_LINKER__Vulkan_Debug CMakeFiles/Vulkan.dir/main.cpp.o CMakeFiles/Vulkan.dir/Vulkan.cpp.o || Shaders
   FLAGS = -g
   LINK_FLAGS = -rdynamic
   LINK_LIBRARIES = -lglfw  -ldl  -lpthread  -lX11  -lXxf86vm  -lXrandr  -lXi  -lvulkan
@@ -248,6 +248,12 @@ build Vulkan: CXX_EXECUTABLE_LINKER__Vulkan_Debug CMakeFiles/Vulkan.dir/main.cpp
   PRE_LINK = :
   TARGET_FILE = Vulkan
   TARGET_PDB = Vulkan.dbg
+
+
+#############################################
+# Utility command for Shaders
+
+build Shaders: phony CMakeFiles/Shaders shaders/frag/passthru.spv shaders/vert/passthru.spv
 
 
 #############################################
@@ -531,6 +537,30 @@ build CMakeFiles/ContinuousMemCheck | ${cmake_ninja_workdir}CMakeFiles/Continuou
 build CMakeFiles/ContinuousSubmit | ${cmake_ninja_workdir}CMakeFiles/ContinuousSubmit: CUSTOM_COMMAND
   COMMAND = cd /home/abrady/github/vulkan3/build && /home/abrady/.local/lib/python3.11/site-packages/cmake/data/bin/ctest -D ContinuousSubmit
   pool = console
+
+
+#############################################
+# Phony custom command for CMakeFiles/Shaders
+
+build CMakeFiles/Shaders | ${cmake_ninja_workdir}CMakeFiles/Shaders: phony shaders/vert/passthru.spv shaders/frag/passthru.spv
+
+
+#############################################
+# Custom command for shaders/frag/passthru.spv
+
+build shaders/frag/passthru.spv | ${cmake_ninja_workdir}shaders/frag/passthru.spv: CUSTOM_COMMAND /home/abrady/github/vulkan3/shaders/frag/passthru.glsl /home/abrady/github/vulkan3/shaders/frag/passthru.glsl
+  COMMAND = cd /home/abrady/github/vulkan3/build && echo "Compiling shader /home/abrady/github/vulkan3/shaders/frag/passthru.glsl to /home/abrady/github/vulkan3/build/shaders/frag/passthru.spv" && glslc -fshader-stage=frag /home/abrady/github/vulkan3/shaders/frag/passthru.glsl -o /home/abrady/github/vulkan3/build/shaders/frag/passthru.spv
+  DESC = Generating shaders/frag/passthru.spv
+  restat = 1
+
+
+#############################################
+# Custom command for shaders/vert/passthru.spv
+
+build shaders/vert/passthru.spv | ${cmake_ninja_workdir}shaders/vert/passthru.spv: CUSTOM_COMMAND /home/abrady/github/vulkan3/shaders/vert/passthru.glsl /home/abrady/github/vulkan3/shaders/vert/passthru.glsl
+  COMMAND = cd /home/abrady/github/vulkan3/build && echo "Compiling shader /home/abrady/github/vulkan3/shaders/vert/passthru.glsl to /home/abrady/github/vulkan3/build/shaders/vert/passthru.spv" && glslc -fshader-stage=vert /home/abrady/github/vulkan3/shaders/vert/passthru.glsl -o /home/abrady/github/vulkan3/build/shaders/vert/passthru.spv
+  DESC = Generating shaders/vert/passthru.spv
+  restat = 1
 
 # =============================================================================
 # Target aliases.
