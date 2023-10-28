@@ -370,14 +370,13 @@ static void createSwapChain(VkHandles &vk, VkPresent &present) {
     createInfo.presentMode = presentMode;
     createInfo.clipped = VK_TRUE;
 
-    VkSwapchainKHR swapChain;
-    if (vkCreateSwapchainKHR(vk.device, &createInfo, nullptr, &swapChain) != VK_SUCCESS) {
+    if (vkCreateSwapchainKHR(vk.device, &createInfo, nullptr, &present.swapChain) != VK_SUCCESS) {
         throw std::runtime_error("failed to create swap chain!");
     }
 
-    vkGetSwapchainImagesKHR(vk.device, swapChain, &imageCount, nullptr);
+    vkGetSwapchainImagesKHR(vk.device, present.swapChain, &imageCount, nullptr);
     present.swapChainImages.resize(imageCount);
-    vkGetSwapchainImagesKHR(vk.device, swapChain, &imageCount, present.swapChainImages.data());
+    vkGetSwapchainImagesKHR(vk.device, present.swapChain, &imageCount, present.swapChainImages.data());
 
     present.swapChainImageFormat = surfaceFormat.format;
     present.swapChainExtent = extent;
@@ -454,7 +453,7 @@ static std::vector<char> readFile(const std::string& filename) {
     std::ifstream file(filename, std::ios::ate | std::ios::binary);
 
     if (!file.is_open()) {
-        throw std::runtime_error("failed to open file!");
+        throw std::runtime_error("failed to open file " + filename);
     }
 
     size_t fileSize = (size_t) file.tellg();
@@ -588,9 +587,7 @@ static void createGraphicsPipeline(VkHandles &vk, VkPresent &p, VkRender &r, cha
     pipelineInfo.subpass = 0;
     pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
 
-    if (vkCreateGraphicsPipelines(vk.device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &r.graphicsPipeline) != VK_SUCCESS) {
-        throw std::runtime_error("failed to create graphics pipeline!");
-    }
+    VK_CHECK(vkCreateGraphicsPipelines(vk.device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &r.graphicsPipeline));
 
     vkDestroyShaderModule(vk.device, fragShaderModule, nullptr);
     vkDestroyShaderModule(vk.device, vertShaderModule, nullptr);

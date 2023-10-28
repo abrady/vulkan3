@@ -163,7 +163,7 @@ void drawFrame(Vulkan &v, VkBuffer vertexBuffer, VkBuffer indexBuffer, size_t nu
 }
 
 int main(int, char**){
-    Vulkan vulkan = createVulkan("Hello, Vulkan!", true, "build/shaders/vert/passthru.spf", "build/shaders/frag/passthru.spf");
+    Vulkan vulkan = createVulkan("Hello, Vulkan!", true, "shaders/vert/passthru.spv", "shaders/frag/passthru.spv");
     std::cout << "Hello, from Vulkan!\n";
 
     const std::vector<Vertex> vertices = {
