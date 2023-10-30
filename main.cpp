@@ -96,7 +96,25 @@ void recordCommandBuffer(Vulkan &v, VkFramebuffer framebuffer, VkBuffer vertexBu
     }
 }
 
-void recordCommandBuffer(Vulkan &v, VkFramebuffer framebuffer, VkBuffer vertexBuffer, VkBuffer indexBuffer, uint32_t numIndices) {
+struct Model {
+    VkBuffer vertexBuffer;
+    VkDeviceMemory vertexBufferMemory;
+    VkBuffer indexBuffer;
+    VkDeviceMemory indexBufferMemory;
+    size_t numIndices;
+};
+
+Model createModel(Vulkan &vulkan, std::vector<Vertex> vertices, std::vector<uint16_t> indices) {
+    VkBuffer vertexBuffer;
+    VkDeviceMemory vertexBufferMemory;
+    createVertexBuffer(vulkan.handles, vertices, vertexBuffer, vertexBufferMemory);
+    VkBuffer indexBuffer;
+    VkDeviceMemory indexBufferMemory;
+    createIndexBuffer(vulkan.handles, indices, indexBuffer, indexBufferMemory);
+    return {vertexBuffer, vertexBufferMemory, indexBuffer, indexBufferMemory, indices.size()};
+}
+
+void recordCommandBuffer(Vulkan &v, VkFramebuffer framebuffer, std::vector<Model> &models) {
     auto commandBuffer = v.render.getCF().commandBuffer;
     auto swapChainExtent = v.present.swapChainExtent;
     VkCommandBufferBeginInfo beginInfo{};
@@ -135,14 +153,16 @@ void recordCommandBuffer(Vulkan &v, VkFramebuffer framebuffer, VkBuffer vertexBu
         scissor.extent = swapChainExtent;
         vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
-        VkBuffer vertexBuffers[] = {vertexBuffer};
-        VkDeviceSize offsets[] = {0};
-        vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
+        for (int i = 0; i < models.size(); i++) {
+            auto &model = models[i];
+            VkBuffer vertexBuffers[] = {model.vertexBuffer};
+            VkDeviceSize offsets[] = {0};
+            vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
 
-        vkCmdBindIndexBuffer(commandBuffer, indexBuffer, 0, VK_INDEX_TYPE_UINT16);
+            vkCmdBindIndexBuffer(commandBuffer, model.indexBuffer, 0, VK_INDEX_TYPE_UINT16);
 
-        vkCmdDrawIndexed(commandBuffer, numIndices, 1, 0, 0, 0);
-
+            vkCmdDrawIndexed(commandBuffer, model.numIndices, 1, 0, 0, 0);
+        }
     vkCmdEndRenderPass(commandBuffer);
 
     if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) {
@@ -150,14 +170,14 @@ void recordCommandBuffer(Vulkan &v, VkFramebuffer framebuffer, VkBuffer vertexBu
     }
 }
 
-void drawFrame(Vulkan &v, VkBuffer vertexBuffer, VkBuffer indexBuffer, size_t numIndices) {
+void drawFrame(Vulkan &v, std::vector<Model> &models) {
     auto &h = v.handles;
     auto &r = v.render;
 
     uint32_t imageIndex = v.waitAndPrepForNextFrame();
     VkFramebuffer framebuffer = v.render.swapChainFramebuffers[imageIndex];
 
-    recordCommandBuffer(v, framebuffer, vertexBuffer, indexBuffer, numIndices);
+    recordCommandBuffer(v, framebuffer, models);
 
     v.submitAndPresent(imageIndex);
 }
@@ -166,27 +186,32 @@ int main(int, char**){
     Vulkan vulkan = createVulkan("Hello, Vulkan!", true, "shaders/vert/passthru.spv", "shaders/frag/passthru.spv");
     std::cout << "Hello, from Vulkan!\n";
 
-    const std::vector<Vertex> vertices = {
+    const std::vector<Vertex> vertices0 = {
+        {{-0.75f, -0.75f}, {1.0f, 0.0f, 0.0f}},
+        {{0.25f, -0.75f}, {0.0f, 1.0f, 0.0f}},
+        {{0.25f, 0.25f}, {0.0f, 0.0f, 1.0f}},
+        {{-0.75f, 0.25f}, {1.0f, 1.0f, 1.0f}}
+    };
+
+    const std::vector<uint16_t> indices0 = { 
+        0, 1, 2, 2, 3, 0
+    };
+
+    const std::vector<Vertex> vertices1 = {
         {{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
         {{0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},
         {{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},
         {{-0.5f, 0.5f}, {1.0f, 1.0f, 1.0f}}
     };
 
-    const std::vector<uint16_t> indices = { 
+    const std::vector<uint16_t> indices1 = { 
         0, 1, 2, 2, 3, 0
     };
-
-    VkBuffer vertexBuffer;
-    VkDeviceMemory vertexBufferMemory;
-    createVertexBuffer(vulkan.handles, vertices, vertexBuffer, vertexBufferMemory);
-    VkBuffer indexBuffer;
-    VkDeviceMemory indexBufferMemory;
-    createIndexBuffer(vulkan.handles, indices, indexBuffer, indexBufferMemory);
+    std::vector<Model> models = {createModel(vulkan, vertices0, indices0), createModel(vulkan, vertices1, indices1)};
 
     while (!glfwWindowShouldClose(vulkan.handles.window)) {
         glfwPollEvents();
-        drawFrame(vulkan, vertexBuffer, indexBuffer, indices.size());
+        drawFrame(vulkan, models);
     }
 
     return 0;

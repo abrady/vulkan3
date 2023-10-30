@@ -1,3 +1,11 @@
+// TODOS:
+// - multiple models
+// - depth buffer
+// - texture mapping
+// - uniform buffers
+// - push constants
+// - MSAA
+// - swapchain recreation
 #pragma once
 #include <vulkan/vulkan.h>
 
