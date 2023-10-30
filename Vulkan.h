@@ -1,5 +1,5 @@
 // TODOS:
-// - multiple models
+// x multiple models
 // - depth buffer
 // - texture mapping
 // - uniform buffers

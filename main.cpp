@@ -24,7 +24,7 @@ void createVertexBuffer(VkHandles vk, std::vector<Vertex> vertices, VkBuffer& ve
     vkFreeMemory(vk.device, stagingBufferMemory, nullptr);
 }
 
-void createIndexBuffer(VkHandles vk, std::vector<uint16_t> indices, VkBuffer& indexBuffer, VkDeviceMemory& indexBufferMemory) {
+void createIndexBuffer(VkHandles vk, std::vector<uint32_t> indices, VkBuffer& indexBuffer, VkDeviceMemory& indexBufferMemory) {
     VkDeviceSize bufferSize = sizeof(indices[0]) * indices.size();
 
     VkBuffer stagingBuffer;
@@ -44,67 +44,23 @@ void createIndexBuffer(VkHandles vk, std::vector<uint16_t> indices, VkBuffer& in
     vkFreeMemory(vk.device, stagingBufferMemory, nullptr);
 }
 
-void recordCommandBuffer(Vulkan &v, VkFramebuffer framebuffer, VkBuffer vertexBuffer, VkBuffer indexBuffer, size_t numVerts) {
-    VkCommandBufferBeginInfo beginInfo{};
-    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-
-    VkFrame cf = v.render.getCF();
-    if (vkBeginCommandBuffer(cf.commandBuffer, &beginInfo) != VK_SUCCESS) {
-        throw std::runtime_error("failed to begin recording command buffer!");
-    }
-
-    VkRenderPassBeginInfo renderPassInfo{};
-    renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-    renderPassInfo.renderPass = v.render.renderPass;
-    renderPassInfo.framebuffer = framebuffer;
-    renderPassInfo.renderArea.offset = {0, 0};
-    renderPassInfo.renderArea.extent = v.present.swapChainExtent;
-
-    VkClearValue clearColor = {{{0.0f, 0.0f, 0.0f, 1.0f}}};
-    renderPassInfo.clearValueCount = 1;
-    renderPassInfo.pClearValues = &clearColor;
-
-    vkCmdBeginRenderPass(cf.commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE); {
-        vkCmdBindPipeline(cf.commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, v.render.graphicsPipeline);
-
-        VkViewport viewport{};
-        viewport.x = 0.0f;
-        viewport.y = 0.0f;
-        viewport.width = (float) v.present.swapChainExtent.width;
-        viewport.height = (float) v.present.swapChainExtent.height;
-        viewport.minDepth = 0.0f;
-        viewport.maxDepth = 1.0f;
-        vkCmdSetViewport(cf.commandBuffer, 0, 1, &viewport);
-
-        VkRect2D scissor{};
-        scissor.offset = {0, 0};
-        scissor.extent = v.present.swapChainExtent;
-        vkCmdSetScissor(cf.commandBuffer, 0, 1, &scissor);
-
-        VkBuffer vertexBuffers[] = {vertexBuffer};
-        VkDeviceSize offsets[] = {0};
-        vkCmdBindVertexBuffers(cf.commandBuffer, 0, 1, vertexBuffers, offsets);
-
-        vkCmdBindIndexBuffer(cf.commandBuffer, indexBuffer, 0, VK_INDEX_TYPE_UINT16);
-
-        vkCmdDrawIndexed(cf.commandBuffer, static_cast<uint32_t>(numVerts), 1, 0, 0, 0);
-
-    } vkCmdEndRenderPass(cf.commandBuffer);
-
-    if (vkEndCommandBuffer(cf.commandBuffer) != VK_SUCCESS) {
-        throw std::runtime_error("failed to record command buffer!");
-    }
-}
-
 struct Model {
     VkBuffer vertexBuffer;
     VkDeviceMemory vertexBufferMemory;
     VkBuffer indexBuffer;
     VkDeviceMemory indexBufferMemory;
     size_t numIndices;
+
+    void draw(VkCommandBuffer commandBuffer) {
+        VkBuffer vertexBuffers[] = {vertexBuffer};
+        VkDeviceSize offsets[] = {0};
+        vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
+        vkCmdBindIndexBuffer(commandBuffer, indexBuffer, 0, VK_INDEX_TYPE_UINT32);
+        vkCmdDrawIndexed(commandBuffer, numIndices, 1, 0, 0, 0);
+    }
 };
 
-Model createModel(Vulkan &vulkan, std::vector<Vertex> vertices, std::vector<uint16_t> indices) {
+Model createModel(Vulkan &vulkan, std::vector<Vertex> vertices, std::vector<uint32_t> indices) {
     VkBuffer vertexBuffer;
     VkDeviceMemory vertexBufferMemory;
     createVertexBuffer(vulkan.handles, vertices, vertexBuffer, vertexBufferMemory);
@@ -155,13 +111,7 @@ void recordCommandBuffer(Vulkan &v, VkFramebuffer framebuffer, std::vector<Model
 
         for (int i = 0; i < models.size(); i++) {
             auto &model = models[i];
-            VkBuffer vertexBuffers[] = {model.vertexBuffer};
-            VkDeviceSize offsets[] = {0};
-            vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
-
-            vkCmdBindIndexBuffer(commandBuffer, model.indexBuffer, 0, VK_INDEX_TYPE_UINT16);
-
-            vkCmdDrawIndexed(commandBuffer, model.numIndices, 1, 0, 0, 0);
+            model.draw(commandBuffer);
         }
     vkCmdEndRenderPass(commandBuffer);
 
@@ -193,7 +143,7 @@ int main(int, char**){
         {{-0.75f, 0.25f}, {1.0f, 1.0f, 1.0f}}
     };
 
-    const std::vector<uint16_t> indices0 = { 
+    const std::vector<uint32_t> indices0 = { 
         0, 1, 2, 2, 3, 0
     };
 
@@ -204,7 +154,7 @@ int main(int, char**){
         {{-0.5f, 0.5f}, {1.0f, 1.0f, 1.0f}}
     };
 
-    const std::vector<uint16_t> indices1 = { 
+    const std::vector<uint32_t> indices1 = { 
         0, 1, 2, 2, 3, 0
     };
     std::vector<Model> models = {createModel(vulkan, vertices0, indices0), createModel(vulkan, vertices1, indices1)};
