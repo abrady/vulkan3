@@ -422,10 +422,25 @@ static void createRenderPass(VkHandles &vk, VkPresent &p, VkRender &r) {
     colorAttachmentRef.attachment = 0;
     colorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
+    VkAttachmentDescription depthAttachment{};
+    depthAttachment.format = vk.depthFormat;
+    depthAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
+    depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE; // VK_ATTACHMENT_STORE_OP_STORE;
+    depthAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE; // VK_ATTACHMENT_LOAD_OP_CLEAR;
+    depthAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE; // VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    depthAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED; // VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+    depthAttachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL; 
+
+    VkAttachmentReference depthAttachmentRef{};
+    depthAttachmentRef.attachment = 1;
+    depthAttachmentRef.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL; 
+
     VkSubpassDescription subpass{};
     subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
     subpass.colorAttachmentCount = 1;
     subpass.pColorAttachments = &colorAttachmentRef;
+    subpass.pDepthStencilAttachment = &depthAttachmentRef;
 
     VkSubpassDependency dependency{};
     dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
@@ -435,10 +450,11 @@ static void createRenderPass(VkHandles &vk, VkPresent &p, VkRender &r) {
     dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
     dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
 
+    std::array<VkAttachmentDescription, 2> attachments = {colorAttachment, depthAttachment};
     VkRenderPassCreateInfo renderPassInfo{};
     renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-    renderPassInfo.attachmentCount = 1;
-    renderPassInfo.pAttachments = &colorAttachment;
+    renderPassInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
+    renderPassInfo.pAttachments = attachments.data();
     renderPassInfo.subpassCount = 1;
     renderPassInfo.pSubpasses = &subpass;
     renderPassInfo.dependencyCount = 1;
@@ -571,12 +587,27 @@ static void createGraphicsPipeline(VkHandles &vk, VkPresent &p, VkRender &r, cha
         throw std::runtime_error("failed to create pipeline layout!");
     }
 
+    // Depth and stencil state containing depth and stencil compare and test operations
+    // We only use depth tests and want depth tests and writes to be enabled and compare with less or equal
+    VkPipelineDepthStencilStateCreateInfo depthStencilStateCI{};
+    depthStencilStateCI.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+    depthStencilStateCI.depthTestEnable = VK_TRUE;
+    depthStencilStateCI.depthWriteEnable = VK_TRUE;
+    depthStencilStateCI.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
+    depthStencilStateCI.depthBoundsTestEnable = VK_FALSE;
+    depthStencilStateCI.back.failOp = VK_STENCIL_OP_KEEP;
+    depthStencilStateCI.back.passOp = VK_STENCIL_OP_KEEP;
+    depthStencilStateCI.back.compareOp = VK_COMPARE_OP_ALWAYS;
+    depthStencilStateCI.stencilTestEnable = VK_FALSE;
+    depthStencilStateCI.front = depthStencilStateCI.back;
+
     VkGraphicsPipelineCreateInfo pipelineInfo{};
     pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
     pipelineInfo.stageCount = 2;
     pipelineInfo.pStages = shaderStages;
     pipelineInfo.pVertexInputState = &vertexInputInfo;
     pipelineInfo.pInputAssemblyState = &inputAssembly;
+    pipelineInfo.pDepthStencilState = &depthStencilStateCI;
     pipelineInfo.pViewportState = &viewportState;
     pipelineInfo.pRasterizationState = &rasterizer;
     pipelineInfo.pMultisampleState = &multisampling;
@@ -593,19 +624,92 @@ static void createGraphicsPipeline(VkHandles &vk, VkPresent &p, VkRender &r, cha
     vkDestroyShaderModule(vk.device, vertShaderModule, nullptr);
 }
 
-static void createFramebuffers(VkHandles &vk, VkPresent &p, VkRender &r) {
+// This function is used to request a device memory type that supports all the property flags we request (e.g. device local, host visible)
+// Upon success it will return the index of the memory type that fits our requested memory properties
+// This is necessary as implementations can offer an arbitrary number of memory types with different
+// memory properties.
+// You can check https://vulkan.gpuinfo.org/ for details on different memory configurations
+uint32_t getMemoryTypeIndex(VkHandles &vk, uint32_t typeBits, VkMemoryPropertyFlags properties)
+{
+    // Iterate over all memory types available for the device used in this example
+    for (uint32_t i = 0; i < vk.deviceMemoryProperties.memoryTypeCount; i++)
+    {
+        if ((typeBits & 1) == 1)
+        {
+            if ((vk.deviceMemoryProperties.memoryTypes[i].propertyFlags & properties) == properties)
+            {
+                return i;
+            }
+        }
+        typeBits >>= 1;
+    }
+
+    throw "Could not find a suitable memory type!";
+}
+
+void setupDepthStencil(VkHandles &h, VkPresent &p, VkRender &r) {
+    // Create an optimal image used as the depth stencil attachment
+    VkImageCreateInfo imageCI{};
+    imageCI.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+    imageCI.imageType = VK_IMAGE_TYPE_2D;
+    imageCI.format = h.depthFormat;
+    // Use example's height and width
+    imageCI.extent = { p.swapChainExtent.width, p.swapChainExtent.height, 1 };
+    imageCI.mipLevels = 1;
+    imageCI.arrayLayers = 1;
+    imageCI.samples = VK_SAMPLE_COUNT_1_BIT;
+    imageCI.tiling = VK_IMAGE_TILING_OPTIMAL;
+    imageCI.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+    imageCI.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    VK_CHECK(vkCreateImage(h.device, &imageCI, nullptr, &r.depthStencil.image));
+
+    // Allocate memory for the image (device local) and bind it to our image
+    VkMemoryAllocateInfo memAlloc{};
+    memAlloc.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    VkMemoryRequirements memReqs;
+    vkGetImageMemoryRequirements(h.device, r.depthStencil.image, &memReqs);
+    memAlloc.allocationSize = memReqs.size;
+    memAlloc.memoryTypeIndex = getMemoryTypeIndex(h, memReqs.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    VK_CHECK(vkAllocateMemory(h.device, &memAlloc, nullptr, &r.depthStencil.mem));
+    VK_CHECK(vkBindImageMemory(h.device, r.depthStencil.image, r.depthStencil.mem, 0));
+
+    // Create a view for the depth stencil image
+    // Images aren't directly accessed in Vulkan, but rather through views described by a subresource range
+    // This allows for multiple views of one image with differing ranges (e.g. for different layers)
+    VkImageViewCreateInfo depthStencilViewCI{};
+    depthStencilViewCI.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+    depthStencilViewCI.viewType = VK_IMAGE_VIEW_TYPE_2D;
+    depthStencilViewCI.format = h.depthFormat;
+    depthStencilViewCI.subresourceRange = {};
+    depthStencilViewCI.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+    // Stencil aspect should only be set on depth + stencil formats (VK_FORMAT_D16_UNORM_S8_UINT..VK_FORMAT_D32_SFLOAT_S8_UINT)
+    if (h.depthFormat >= VK_FORMAT_D16_UNORM_S8_UINT) {
+        depthStencilViewCI.subresourceRange.aspectMask |= VK_IMAGE_ASPECT_STENCIL_BIT;
+    }
+    depthStencilViewCI.subresourceRange.baseMipLevel = 0;
+    depthStencilViewCI.subresourceRange.levelCount = 1;
+    depthStencilViewCI.subresourceRange.baseArrayLayer = 0;
+    depthStencilViewCI.subresourceRange.layerCount = 1;
+    depthStencilViewCI.image = r.depthStencil.image;
+    VK_CHECK(vkCreateImageView(h.device, &depthStencilViewCI, nullptr, &r.depthStencil.view));
+}
+
+static void createFramebuffers(VkHandles &vk, VkPresent &p, VkImageParts &depthStencil, VkRender &r) {
     r.swapChainFramebuffers.resize(p.swapChainImageViews.size());
 
     for (size_t i = 0; i < p.swapChainImageViews.size(); i++) {
-        VkImageView attachments[] = {
-            p.swapChainImageViews[i]
+        // Depth/Stencil attachment is the same for all frame buffers due to how depth works with current GPUs
+               
+        std::array<VkImageView, 2> attachments = {
+            p.swapChainImageViews[i],
+            depthStencil.view,
         };
 
         VkFramebufferCreateInfo framebufferInfo{};
         framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
         framebufferInfo.renderPass = r.renderPass;
-        framebufferInfo.attachmentCount = 1;
-        framebufferInfo.pAttachments = attachments;
+        framebufferInfo.attachmentCount = attachments.size();
+        framebufferInfo.pAttachments = attachments.data();
         framebufferInfo.width = p.swapChainExtent.width;
         framebufferInfo.height = p.swapChainExtent.height;
         framebufferInfo.layers = 1;
@@ -650,6 +754,30 @@ void createSyncObjects(VkHandles &vk, VkRender &r) {
     }
 }
 
+VkFormat getSupportedDepthFormat(VkPhysicalDevice physicalDevice) {
+    // Since all depth formats may be optional, we need to find a suitable depth format to use
+    // Start with the highest precision packed format
+    std::vector<VkFormat> formatList = {
+        VK_FORMAT_D32_SFLOAT_S8_UINT,
+        VK_FORMAT_D32_SFLOAT,
+        VK_FORMAT_D24_UNORM_S8_UINT,
+        VK_FORMAT_D16_UNORM_S8_UINT,
+        VK_FORMAT_D16_UNORM
+    };
+
+    for (auto& format : formatList)
+    {
+        VkFormatProperties formatProps;
+        vkGetPhysicalDeviceFormatProperties(physicalDevice, format, &formatProps);
+        if (formatProps.optimalTilingFeatures & VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT)
+        {
+            return format;
+        }
+    }
+
+    throw std::runtime_error("Could not find a matching depth format");
+}
+
 static VkHandles createVulkanHandles(char const *applicationName, bool enableValidationLayers) {
     VkHandles vk;
     vk.window = initWindow(800, 600);
@@ -663,6 +791,10 @@ static VkHandles createVulkanHandles(char const *applicationName, bool enableVal
     }
     vk.physicalDevice = pickPhysicalDevice(vk.instance, vk.surface);
     vk.device = createLogicalDevice(vk.physicalDevice, vk.surface, enableValidationLayers, vk.graphicsQueue, vk.presentQueue);
+
+    // misc info
+    vkGetPhysicalDeviceMemoryProperties(vk.physicalDevice, &vk.deviceMemoryProperties);
+    vk.depthFormat = getSupportedDepthFormat(vk.physicalDevice);
 
     return vk;
 }
@@ -678,7 +810,8 @@ static VkRender createVulkanRender(VkHandles &vk, VkPresent &p, char const *vert
     VkRender render;
     createRenderPass(vk, p, render);
     createGraphicsPipeline(vk, p, render, vertexShader, fragmentShader);
-    createFramebuffers(vk, p, render);
+    setupDepthStencil(vk, p, render);
+    createFramebuffers(vk, p, render.depthStencil, render);
     render.commandPool = vk.createCommandPool();
     createCommandBuffers(vk, p, render);
     createSyncObjects(vk, render);

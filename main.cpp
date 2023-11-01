@@ -70,50 +70,30 @@ Model createModel(Vulkan &vulkan, std::vector<Vertex> vertices, std::vector<uint
     return {vertexBuffer, vertexBufferMemory, indexBuffer, indexBufferMemory, indices.size()};
 }
 
-void recordCommandBuffer(Vulkan &v, VkFramebuffer framebuffer, std::vector<Model> &models) {
-    auto commandBuffer = v.render.getCF().commandBuffer;
-    auto swapChainExtent = v.present.swapChainExtent;
-    VkCommandBufferBeginInfo beginInfo{};
-    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-
-    if (vkBeginCommandBuffer(commandBuffer, &beginInfo) != VK_SUCCESS) {
-        throw std::runtime_error("failed to begin recording command buffer!");
-    }
-
-    VkRenderPassBeginInfo renderPassInfo{};
-    renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-    renderPassInfo.renderPass = v.render.renderPass;
-    renderPassInfo.framebuffer = framebuffer;
-    renderPassInfo.renderArea.offset = {0, 0};
-    renderPassInfo.renderArea.extent = swapChainExtent;
-
-    VkClearValue clearColor = {{{0.0f, 0.0f, 0.0f, 1.0f}}};
-    renderPassInfo.clearValueCount = 1;
-    renderPassInfo.pClearValues = &clearColor;
-
-    vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+void recordCommandBuffer(Vulkan &v, uint32_t frameIndex, std::vector<Model> &models) {
+    VkCommandBuffer commandBuffer = v.render.beginRenderpass(v.present, frameIndex); {
 
         vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, v.render.graphicsPipeline);
 
         VkViewport viewport{};
         viewport.x = 0.0f;
         viewport.y = 0.0f;
-        viewport.width = (float) swapChainExtent.width;
-        viewport.height = (float) swapChainExtent.height;
+        viewport.width = (float) v.present.swapChainExtent.width;
+        viewport.height = (float) v.present.swapChainExtent.height;
         viewport.minDepth = 0.0f;
         viewport.maxDepth = 1.0f;
         vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
 
         VkRect2D scissor{};
         scissor.offset = {0, 0};
-        scissor.extent = swapChainExtent;
+        scissor.extent = v.present.swapChainExtent;
         vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
         for (int i = 0; i < models.size(); i++) {
             auto &model = models[i];
             model.draw(commandBuffer);
         }
-    vkCmdEndRenderPass(commandBuffer);
+    } vkCmdEndRenderPass(commandBuffer);
 
     if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) {
         throw std::runtime_error("failed to record command buffer!");
@@ -125,9 +105,7 @@ void drawFrame(Vulkan &v, std::vector<Model> &models) {
     auto &r = v.render;
 
     uint32_t imageIndex = v.waitAndPrepForNextFrame();
-    VkFramebuffer framebuffer = v.render.swapChainFramebuffers[imageIndex];
-
-    recordCommandBuffer(v, framebuffer, models);
+    recordCommandBuffer(v, imageIndex, models);
 
     v.submitAndPresent(imageIndex);
 }
